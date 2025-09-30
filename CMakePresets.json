@@ -1,0 +1,41 @@
+﻿{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "x64-debug-vcpkg-vs",
+            "displayName": "x64 Debug (vcpkg, VS2019)",
+            "generator": "Visual Studio 16 2019",
+            "architecture": { "value": "x64" },
+            "binaryDir": "out/build/x64-debug-vcpkg-vs",
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "C:/Users/fsdma/source/repos/vcpkg/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_TARGET_TRIPLET": "x64-windows",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": true
+            }
+        },
+        {
+            "name": "x64-release-vcpkg-vs",
+            "displayName": "x64 Release (vcpkg, VS2019)",
+            "generator": "Visual Studio 16 2019",
+            "architecture": { "value": "x64" },
+            "binaryDir": "out/build/x64-release-vcpkg-vs",
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "C:/Users/fsdma/source/repos/vcpkg/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_TARGET_TRIPLET": "x64-windows",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": true
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "x64-debug-vcpkg-vs",
+            "configurePreset": "x64-debug-vcpkg-vs",
+            "configuration": "Debug"
+        },
+        {
+            "name": "x64-release-vcpkg-vs",
+            "configurePreset": "x64-release-vcpkg-vs",
+            "configuration": "Release"
+        }
+    ]
+}

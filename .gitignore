@@ -1,0 +1,38 @@
+# Build trees
+/build/
+/out/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/compile_commands.json
+
+# Visual Studio / VS Code junk
+/.vs/
+/.vscode/
+/*.VC.db
+/*.VC.opendb
+*.user
+*.suo
+
+# Ninja/VS/MSBuild outputs
+/Debug/
+/Release/
+/RelWithDebInfo/
+/MinSizeRel/
+/x64/
+/x86/
+
+# Logs & misc
+*.log
+*.tlog
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+
+# Crash dumps
+*.dmp
