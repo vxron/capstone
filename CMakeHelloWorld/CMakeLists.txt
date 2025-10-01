@@ -1,11 +1,19 @@
 ﻿# Create the executable
 add_executable(CMakeHelloWorld
-  CMakeHelloWorld.cpp
-  CMakeHelloWorld.h
+  src/CMakeHelloWorld.cpp
+  src/CMakeHelloWorld.h
+  src/utils/Types.h
+  src/utils/RingBuffer.h
+  src/acq/FakeAcquisition.h
+  src/acq/FakeAcquisition.cpp
 )
 
 # Link spdlog to the exe
 target_link_libraries(CMakeHelloWorld PRIVATE spdlog::spdlog)
+
+target_include_directories(CMakeHelloWorld PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
 
 # Help VS IntelliSense see spdlog headers
 target_include_directories(CMakeHelloWorld PRIVATE
