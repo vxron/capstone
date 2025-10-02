@@ -26,3 +26,10 @@ set_property(TARGET CMakeHelloWorld PROPERTY CXX_STANDARD 20)
 
 
 # TODO: Add tests and install targets if needed.
+
+# Make VS treat it as C++ for IntelliSense, not a build input
+set_source_files_properties(src/utils/RingBuffer.tpp
+  PROPERTIES
+    LANGUAGE CXX
+    HEADER_FILE_ONLY TRUE
+)
