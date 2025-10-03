@@ -1,7 +1,5 @@
-// for .tpp file
 #include <cassert>
 #include <utility> // std::move
-#include "RingBuffer.h"
 
 /* Default Constructor
 * Initialize the queue with fixed capacity and pre-construct storage
@@ -44,6 +42,8 @@ bool RingBuffer_C<T>::push_drop_oldest(T chunk) {
 
 	// Notify waiting consumer that new data is available (just pushed)
 	not_empty_cv_.notify_one();
+
+	return true;
 
 }
 
@@ -102,4 +102,36 @@ std::optional<T> RingBuffer_C<T>::pop() {
 	count_--;
 
 	return chunkOut;
+}
+
+/*
+* CLOSE:
+* Purpose: shutdown (no more pushes allowed to the queue, pops return no value once drained)
+*/
+template<typename T>
+void RingBuffer_C<T>::close() {
+	std::lock_guard<std::mutex> lock(mtx_); // lock during close
+	closed_ = true;
+	// notify consumer on the "not empty" cv in case it's waiting in pop() loop
+	not_empty_cv_.notify_all();
+}
+
+/*
+* get_capacity
+* Behavior: non-throwing, since cap_ is const and set at construction
+*/
+template<typename T>
+std::size_t RingBuffer_C<T>::get_capacity() const {
+	return cap_;
+}
+
+/*
+* get_approx_size 
+* Behavior: reads a variable that other threads are modifying, therefore locks momentarily to avoid data race (undef behavior)
+* Note: this is only an approximate size, since the count_ variable can change immediately after
+*/
+template<typename T>
+std::size_t RingBuffer_C<T>::get_approx_size() const {
+	std::lock_guard<std::mutex> lock(mtx_);
+	return count_;
 }
