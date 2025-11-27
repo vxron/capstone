@@ -76,3 +76,8 @@ void EegFilterBank_C::process_chunk(bufferChunk_S& chunk) {
     }
 }
 
+void EegFilterBank_C::level_shift_and_scale(bufferChunk_S& chunk){
+    for (size_t i=0; i<NUM_SAMPLES_CHUNK; i++){
+        chunk.data[i] = chunk.data[i]*SCALE_FACTOR + LEVEL_SHIFT_OFFSET;
+    }
+}
