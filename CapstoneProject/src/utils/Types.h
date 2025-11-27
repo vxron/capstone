@@ -158,6 +158,7 @@ struct bufferChunk_S {
 	std::size_t numCh = NUM_CH_CHUNK; 		     // number of enabled channels
 	std::size_t numScans = NUM_SCANS_CHUNK;      // number of scans (time steps) in this chunk (32)
 	std::array<float, NUM_SAMPLES_CHUNK> data{}; // interleaved samples: [ch0s0, ch1s0, ch2s0, ..., chN-1s0, ch0s1, ch1s1, ..., chN-1sM-1]
+	std::array<bool, NUM_CH_CHUNK> quality;				// quality flag for each channel in a single chunk
 	bool active_label;                       // obtained from stimulus global state 
 }; // bufferChunk_S
 
@@ -197,5 +198,10 @@ struct sessionConfigs_S {
 	stimulus_s right_stimulus;
 };
 
+#include <atomic>
+
+struct bufferChunk_S; // forward declare if needed
+
+extern std::atomic<bufferChunk_S*> g_lastChunkPtr;
 
 /* END STRUCTS */

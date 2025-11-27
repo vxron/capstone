@@ -63,8 +63,8 @@ void HttpServer_C::handle_get_state(const httplib::Request& req, httplib::Respon
     int freq_left_hz_e = static_cast<int>(stateStoreRef_.g_freq_left_hz_e.load(std::memory_order_acquire));
     int freq_right_hz_e= static_cast<int>(stateStoreRef_.g_freq_right_hz_e.load(std::memory_order_acquire));
     // Active session info
-    bool is_model_ready = stateStoreRef_.sessionInfo.g_isModelReady.load(std::memory_order_acquire);
-    std::string active_subject_id = stateStoreRef_.sessionInfo.g_active_subject_id.load(std::memory_order_acquire);
+    bool is_model_ready = stateStoreRef_.sessionInfo.g_isModelReady;
+    std::string active_subject_id = stateStoreRef_.sessionInfo.g_active_subject_id;
 
     // 2) build json string manually
     std::ostringstream oss;
@@ -188,6 +188,12 @@ bool HttpServer_C::http_start_server(){
 
     liveServerRef_->Post("/ready",
         [this](const httplib::Request& rq, httplib::Response& rs){ this->handle_post_ready(rq, rs); });
+   
+    liveServerRef_->Get("/quality",
+        [this](const httplib::Request& rq, httplib::Response& rs){ this->handle_get_quality(rq, rs); });
+
+    liveServerRef_->Get("/eeg",
+        [this](const httplib::Request& rq, httplib::Response& rs){ this->handle_get_eeg(rq, rs); });
 
     // CORS preflight for POSTs
     liveServerRef_->Options("/event",
@@ -199,6 +205,63 @@ bool HttpServer_C::http_start_server(){
     LOG_ALWAYS("HTTP Server successfully opened");
     return true;
 }
+
+//extern std::atomic<bufferChunk_S*> g_lastChunkPtr;
+extern bufferChunk_S g_lastEegChunk;
+extern std::atomic<bool> g_hasEegChunk;
+
+void HttpServer_C::handle_get_quality(const httplib::Request& req, httplib::Response& res){
+
+    (void)req;
+
+    if (!g_hasEegChunk.load(std::memory_order_acquire)) {
+        write_json(res, "{\"quality\":[0,0,0,0,0,0,0,0]}");
+        return;
+    }
+
+    const bufferChunk_S& last = g_lastEegChunk;
+
+    std::ostringstream oss;
+    oss << "{\"quality\":[";
+
+    for (int i = 0; i < 8; i++) {
+        oss << (last.quality[i] ? "1" : "0");
+        if (i < 7) oss << ",";
+    }
+
+    oss << "]}";
+
+    write_json(res, oss.str());
+}
+
+
+void HttpServer_C::handle_get_eeg(const httplib::Request& req, httplib::Response& res){
+    (void)req;
+
+    if (!g_hasEegChunk.load(std::memory_order_acquire)) {
+        write_json(res, "{\"ok\":false, \"msg\":\"no eeg yet\"}");
+        return;
+    }
+
+    const bufferChunk_S& last = g_lastEegChunk;
+
+    std::ostringstream oss;
+    oss << "{\"ok\":true, \"channels\":[";
+
+    for (int ch = 0; ch < 8; ch++) {
+        oss << "[";
+        for (int s = ch; s < NUM_SAMPLES_CHUNK; s += 8) {
+            oss << last.data[s];
+            if (s + 8 < NUM_SAMPLES_CHUNK) oss << ",";
+        }
+        oss << "]";
+        if (ch < 7) oss << ",";
+    }
+
+    oss << "]}";
+    write_json(res, oss.str());
+}
+
 
 bool HttpServer_C::http_listen_for_poll_requests(){
     /* goal:

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>EEG Real-Time 8-Channel Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body { font-family: Arial; margin: 0; padding: 20px; }
+    .plot-container {
+      margin-bottom: 25px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>Real-Time EEG (8 Channels, Stacked Plots)</h2>
+
+<div id="plots"></div>
+
+<script>
+const fs = 250;          // sampling rate
+const windowSec = 4;     // 4-second scroll window
+let globalIndex = 0;
+
+const N_CH = 8;
+const Y_MIN = -100;
+const Y_MAX = +100;
+
+// Create 8 canvases dynamically
+const plotDiv = document.getElementById("plots");
+const ctxList = [];
+for (let ch = 0; ch < N_CH; ch++) {
+  const div = document.createElement("div");
+  div.className = "plot-container";
+
+  const label = document.createElement("div");
+  label.innerHTML = `<b>Channel ${ch+1}</b>`;
+  div.appendChild(label);
+
+  const canvas = document.createElement("canvas");
+  canvas.id = "canvas_ch" + ch;
+  canvas.width = 1600;
+  canvas.height = 150;
+  div.appendChild(canvas);
+
+  plotDiv.appendChild(div);
+  ctxList.push(canvas.getContext("2d"));
+}
+
+// Build 8 charts
+const charts = [];
+for (let ch = 0; ch < N_CH; ch++) {
+  charts.push(new Chart(ctxList[ch], {
+    type: "line",
+    data: {
+      datasets: [{
+        label: "Ch" + (ch+1),
+        data: [],
+        borderColor: "lime",
+        borderWidth: 1,
+        pointRadius: 0,
+      }]
+    },
+    options: {
+      animation: false,
+      scales: {
+        x: { type: "linear", min: 0, max: windowSec },
+        y: { min: Y_MIN, max: Y_MAX }
+      },
+      plugins: { legend: { display: false } }
+    }
+  }));
+}
+
+// ============================
+// MAIN POLLING LOOP
+// ============================
+async function pollEEG() {
+  try {
+    const res = await fetch("http://127.0.0.1:7777/eeg");
+    const qRes = await fetch("http://127.0.0.1:7777/quality");
+
+    const eeg = await res.json();
+    const qualityJson = await qRes.json();
+
+    if (!eeg.ok) {
+      requestAnimationFrame(pollEEG);
+      return;
+    }
+
+    const channels = eeg.channels;      // [8][32]
+    const quality = qualityJson.quality; // [8] booleans
+
+    const numSamples = channels[0].length;
+
+    // -------- Update signals --------
+    for (let s = 0; s < numSamples; s++) {
+      const t = globalIndex / fs;
+
+      for (let ch = 0; ch < N_CH; ch++) {
+        charts[ch].data.datasets[0].data.push({ x: t, y: channels[ch][s] });
+
+        // set green/red based on quality
+        charts[ch].data.datasets[0].borderColor = quality[ch] ? "lime" : "red";
+      }
+
+      globalIndex++;
+    }
+
+    // ------ Trim window to last 4 seconds -------
+    const cutoff = (globalIndex / fs) - windowSec;
+    for (let ch = 0; ch < N_CH; ch++) {
+      const ds = charts[ch].data.datasets[0].data;
+      charts[ch].data.datasets[0].data = ds.filter(pt => pt.x >= cutoff);
+
+      charts[ch].options.scales.x.min = cutoff;
+      charts[ch].options.scales.x.max = cutoff + windowSec;
+
+      charts[ch].update();
+    }
+
+  } catch (err) {
+    console.log("EEG fetch error:", err);
+  }
+
+  requestAnimationFrame(pollEEG);
+}
+
+pollEEG();
+</script>
+
+</body>
+</html>

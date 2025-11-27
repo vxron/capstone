@@ -75,4 +75,3 @@ void EegFilterBank_C::process_chunk(bufferChunk_S& chunk) {
         }
     }
 }
-

@@ -1,6 +1,10 @@
 #pragma once
-#include "../utils/Types.h"
 #include <atomic>
+#include <string>
+#include <vector>
+#include <mutex>
+#include "../utils/Types.h"
+
 /* STATESTORE
 --> A single source of truth for all main c++ threads + client (js) to read things like:
     1) current UI state
@@ -33,10 +37,10 @@ struct StateStore_s{
 
     // Training status (Python) + subject / session ID
     struct sessionInfo_s {
-        std::atomic<bool> g_isModelReady{0};
-        std::atomic<std::string> g_active_model_path{""}; // where we pull current classifier from
-        std::atomic<std::string> g_active_subject_id{""};
-        std::atomic<std::string> g_active_session_id{""};
+        bool g_isModelReady = false;
+        std::string g_active_model_path{""}; // where we pull current classifier from
+        std::string g_active_subject_id{""};
+        std::string g_active_session_id{""};
     };
     sessionInfo_s sessionInfo{};
 
