@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <title>EEG BCI Page-Turner – Local UI</title>
     <link rel="stylesheet" href="Stim.css?v=20251122-4" />
+    <!-- Chart.js for hardware setup EEG plots -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -52,6 +54,7 @@
         <section class="controls-card">
           <h2>Session Controls</h2>
           <div class="button-row">
+            <button id="btn-start-hw" class="btn ghost">Hardware Setup</button>
             <button id="btn-start-calib" class="btn ghost">
               Start Calibration
             </button>
@@ -83,6 +86,25 @@
               </li>
               <li>Run Mode: dual-frequency arrows for page turning.</li>
             </ul>
+          </section>
+
+          <!-- HARDWARE CHECKS VIEW -->
+          <section id="view-hardware-checks" class="view hidden">
+            <h2>Hardware Setup & Signal Quality</h2>
+            <p class="view-lead">
+              Verify headset placement and electrode contact by inspecting the
+              per-channel signal quality and EEG traces.
+            </p>
+
+            <!-- Quality indicators -->
+            <div id="hw-quality-row" class="hw-quality-row">
+              <!-- channel quality pills should be injected here -->
+            </div>
+
+            <!-- Scrollable region with stacked 8-channel plots -->
+            <div id="hw-plots-container" class="hw-plots-container">
+              <!-- canvases injected by JS -->
+            </div>
           </section>
 
           <!-- INSTRUCTIONS VIEW -->
@@ -194,6 +216,6 @@
       </main>
     </div>
 
-    <script src="Stim.js?v=20251119-5"></script>
+    <script src="Stim.js?v=20251119-8"></script>
   </body>
 </html>

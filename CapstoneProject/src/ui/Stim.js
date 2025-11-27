@@ -29,6 +29,11 @@ const viewActiveCalib = document.getElementById("view-active-calib");
 const viewActiveRun = document.getElementById("view-active-run");
 const viewRunOptions = document.getElementById("view-run-options");
 const viewSavedSessions = document.getElementById("view-saved-sessions");
+const viewHardware = document.getElementById("view-hardware-checks");
+
+// HW Quality Page elements
+const hwQualityRow = document.getElementById("hw-quality-row");
+const hwPlotsContainer = document.getElementById("hw-plots-container");
 
 // Instructions specific fields for instruction windows (fillable by state store info)
 const elInstrBlockId = document.getElementById("instr-block-id");
@@ -50,6 +55,7 @@ const btnRunStartDefault = document.getElementById("btn-run-start-default");
 const btnRunSavedSessions = document.getElementById("btn-run-saved-sessions");
 const btnSessionsNew = document.getElementById("btn-sessions-new");
 const btnSessionsBack = document.getElementById("btn-sessions-back");
+const btnStartHw = document.getElementById("btn-start-hw");
 
 // Timer for browser requests to server
 let pollInterval = null;
@@ -81,6 +87,7 @@ function showView(name) {
     viewActiveRun,
     viewRunOptions,
     viewSavedSessions,
+    viewHardware,
   ];
 
   for (const v of allViews) {
@@ -105,6 +112,9 @@ function showView(name) {
       break;
     case "saved_sessions":
       viewSavedSessions.classList.remove("hidden");
+      break;
+    case "hardware_checks":
+      viewHardware.classList.remove("hidden");
       break;
     default:
       viewHome.classList.remove("hidden");
@@ -238,8 +248,10 @@ function updateUiFromState(data) {
     stopCalibFlicker();
     stopRunFlicker();
     setFullScreenMode(false);
+    //stopHardwareMode();
     showView("home");
   } else if (stimState === 2 /* Instructions */) {
+    //stopHardwareMode();
     stopCalibFlicker();
     setFullScreenMode(true);
     showView("instructions");
@@ -248,11 +260,13 @@ function updateUiFromState(data) {
     elInstrFreqHz.textContent = fmtFreqHz(data.freq_hz) + " Hz";
     // TODO: customize elInstructionsText based on block / upcoming freq
   } else if (stimState === 1 /* Active_Calib */) {
+    //stopHardwareMode();
     setFullScreenMode(true);
     showView("active_calib");
     const calibFreqHz = data.freq_hz ?? 0;
     startCalibFlicker(calibFreqHz);
   } else if (stimState === 0 /* Active_Run */) {
+    //stopHardwareMode();
     setFullScreenMode(true);
     showView("active_run");
     // set run mode flag for css to max separability btwn stimuli blocks :)
@@ -262,6 +276,7 @@ function updateUiFromState(data) {
     const runRightHz = data.freq_left_hz ?? data.freq_hz ?? 0;
     startRunFlicker(runLeftHz, runRightHz);
   } else if (stimState === 4 /* Saved Sessions */) {
+    //stopHardwareMode();
     stopCalibFlicker();
     stopRunFlicker();
     setFullScreenMode(false);
@@ -269,6 +284,7 @@ function updateUiFromState(data) {
 
     // TODO: render session list from backend
   } else if (stimState === 5 /* Run Options */) {
+    //stopHardwareMode();
     stopCalibFlicker();
     stopRunFlicker();
     setFullScreenMode(false);
@@ -282,6 +298,12 @@ function updateUiFromState(data) {
     elRunModelStatus.textContent = modelReady
       ? "Model ready"
       : "No trained model yet, please run calibration";
+  } else if (stimState == 6 /* Hardware Checks */) {
+    stopCalibFlicker();
+    stopRunFlicker();
+    setFullScreenMode(true);
+    showView("hardware_checks");
+    //startHardwareMode();
   }
 }
 
@@ -493,7 +515,159 @@ function stopRunFlicker() {
   if (rightStimulus) rightStimulus.stop();
 }
 
-// =============== 11) SEND POST EVENTS WHEN USER CLICKS BUTTONS (OR OTHER INPUTS) ===============
+// ============== 11) HARDWARE CHECKS PLOTTING =============================
+const HW_N_CH = 8;
+const HW_FS = 250;
+const HW_WINDOW_SEC = 4;
+const HW_Y_MIN = -100;
+const HW_Y_MAX = 100;
+
+let hwCharts = [];
+let hwGlobalIndex = 0;
+let hwActive = false;
+let hwAnimId = null;
+
+function initHardwareCharts() {
+  if (!hwPlotsContainer || hwCharts.length > 0) return;
+
+  // create stacked 8-channel canvases
+  for (let ch = 0; ch < HW_N_CH; ch++) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "hw-plot";
+
+    const label = document.createElement("div");
+    label.className = "hw-plot-label";
+    label.textContent = `Channel ${ch + 1}`;
+    wrapper.appendChild(label);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 1400;
+    canvas.height = 120;
+    wrapper.appendChild(canvas);
+
+    hwPlotsContainer.appendChild(wrapper);
+
+    const ctx = canvas.getContext("2d");
+    const chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        datasets: [
+          {
+            label: `Ch${ch + 1}`,
+            data: [],
+            borderWidth: 1,
+            pointRadius: 0,
+          },
+        ],
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            type: "linear",
+            min: 0,
+            max: HW_WINDOW_SEC,
+          },
+          y: {
+            min: HW_Y_MIN,
+            max: HW_Y_MAX,
+          },
+        },
+        plugins: {
+          legend: { display: false },
+        },
+      },
+    });
+
+    hwCharts.push(chart);
+  }
+}
+
+function updateHwQualityPills(qualityArr) {
+  if (!hwQualityRow) return;
+  hwQualityRow.innerHTML = "";
+  for (let ch = 0; ch < HW_N_CH; ch++) {
+    const pill = document.createElement("div");
+    pill.className = "hw-quality-pill " + (qualityArr[ch] ? "good" : "bad");
+    pill.textContent = `Ch ${ch + 1}: ${qualityArr[ch] ? "OK" : "Check"}`;
+    hwQualityRow.appendChild(pill);
+  }
+}
+
+async function hardwareLoop() {
+  if (!hwActive) return;
+
+  try {
+    const [eegRes, qRes] = await Promise.all([
+      fetch(`${API_BASE}/eeg`),
+      fetch(`${API_BASE}/quality`),
+    ]);
+
+    const eeg = await eegRes.json();
+    const qualityJson = await qRes.json();
+
+    if (eeg.ok !== true || !Array.isArray(eeg.channels)) {
+      hwAnimId = requestAnimationFrame(hardwareLoop);
+      return;
+    }
+
+    const channels = eeg.channels; // [8][N]
+    const quality = qualityJson.quality || new Array(HW_N_CH).fill(0);
+    const numSamples = channels[0].length;
+
+    // update quality pills
+    updateHwQualityPills(quality);
+
+    for (let s = 0; s < numSamples; s++) {
+      const t = hwGlobalIndex / HW_FS;
+      for (let ch = 0; ch < HW_N_CH; ch++) {
+        const y = channels[ch][s];
+        const ds = hwCharts[ch].data.datasets[0];
+
+        ds.data.push({ x: t, y });
+
+        // color by quality
+        ds.borderColor = quality[ch] ? "#4ade80" : "#f97373";
+      }
+      hwGlobalIndex++;
+    }
+
+    // trim to last 4s
+    const cutoff = hwGlobalIndex / HW_FS - HW_WINDOW_SEC;
+    for (let ch = 0; ch < HW_N_CH; ch++) {
+      const ds = hwCharts[ch].data.datasets[0];
+      ds.data = ds.data.filter((pt) => pt.x >= cutoff);
+      hwCharts[ch].options.scales.x.min = cutoff;
+      hwCharts[ch].options.scales.x.max = cutoff + HW_WINDOW_SEC;
+      hwCharts[ch].update();
+    }
+  } catch (err) {
+    console.log("EEG fetch error:", err);
+  }
+
+  hwAnimId = requestAnimationFrame(hardwareLoop);
+}
+
+function startHardwareMode() {
+  initHardwareCharts();
+  hwActive = true;
+  hwGlobalIndex = 0;
+  if (!hwAnimId) {
+    hwAnimId = requestAnimationFrame(hardwareLoop);
+  }
+}
+
+function stopHardwareMode() {
+  hwActive = false;
+  if (hwAnimId) {
+    cancelAnimationFrame(hwAnimId);
+    hwAnimId = null;
+  }
+}
+
+// =============== 12) SEND POST EVENTS WHEN USER CLICKS BUTTONS (OR OTHER INPUTS) ===============
 // Helper to send a session event to C++
 async function sendSessionEvent(kind) {
   // IMPORTANT: kind is defined sporadically in init(), e.g. "start_calib", "start_run"
@@ -516,7 +690,7 @@ async function sendSessionEvent(kind) {
   }
 }
 
-// ================== 12) INIT ON PAGE LOAD ===================
+// ================== 13) INIT ON PAGE LOAD ===================
 async function init() {
   logLine("Initializing UI…");
   const estimated_refresh = await estimateRefreshHz();
@@ -561,6 +735,10 @@ async function init() {
 
   btnSessionsBack.addEventListener("click", () => {
     sendSessionEvent("back_to_run_options");
+  });
+
+  btnStartHw.addEventListener("click", () => {
+    sendSessionEvent("hardware_checks");
   });
 }
 // Init as soon as page loads

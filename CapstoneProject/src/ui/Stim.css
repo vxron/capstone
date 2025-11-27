@@ -379,6 +379,55 @@ body {
   font-size: 0.75rem;
 }
 
+/* HARDWARE CHECKS VIEW */
+
+.hw-quality-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.hw-quality-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--text-main);
+}
+
+.hw-quality-pill.good {
+  border-color: var(--success);
+  box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.4);
+}
+
+.hw-quality-pill.bad {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px rgba(249, 115, 115, 0.4);
+}
+
+.hw-plots-container {
+  margin-top: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-soft);
+  padding: 10px 12px;
+  max-height: calc(100vh - 220px); /* scroll within fullscreen */
+  overflow-y: auto;
+}
+
+/* Canvases for EEG channels */
+.hw-plot {
+  margin-bottom: 16px;
+}
+
+.hw-plot-label {
+  font-size: 0.75rem;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+}
+
 /* FULLSCREEN MODE (CALIB & RUN) */
 
 /* When in fullscreen, hide sidebar + log panel, let main panel fill */

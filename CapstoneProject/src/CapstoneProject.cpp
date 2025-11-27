@@ -19,10 +19,8 @@
 #include "stimulus/StimulusController.hpp"
 #include "acq/UnicornDriver.h"
 #include <fstream>
-
-#ifdef USE_EEG_FILTERS
 #include "utils/Filters.hpp"
-#endif
+#include "utils/SignalQualityAnalyzer.h"
 
 #ifdef ACQ_BACKEND_FAKE
 #include "acq/FakeAcquisition.h"
@@ -36,11 +34,7 @@ void handle_sigint(int) {
     g_stop.store(true,std::memory_order_relaxed);
 }
 
-#ifdef ACQ_BACKEND_FAKE
 void producer_thread_fn(RingBuffer_C<bufferChunk_S>& rb, StateStore_s& stateStoreRef){
-#else
-void producer_thread_fn(RingBuffer_C<bufferChunk_S>& rb){
-#endif
     using namespace std::chrono_literals;
     logger::tlabel = "producer";
 try {
@@ -64,9 +58,7 @@ try {
 
 #endif
 
-#ifdef USE_EEG_FILTERS
     EegFilterBank_C filterBank;
-#endif
 
     // somthn to use iacqprovider_s instead of unicorndriver_c directly
     // then we can choose based on acq_backend_fake which provider btwn unicorn and fake to set th eobjec too?
@@ -93,10 +85,18 @@ try {
         tick_count++;
         chunk.tick = tick_count;
 
+        // Scale & level shift raw data
+        filterBank.level_shift_and_scale(chunk);
+        LOG_ALWAYS(chunk.data[0]); // TEMPORARY: just to see the types of numbers it outputs
+
 #ifdef USE_EEG_FILTERS
         // before we create window: PREPROCESS CHUNK
         filterBank.process_chunk(chunk);
 #endif
+
+        // Update state store with this new chunk for UI vis
+        stateStoreRef.g_hasEegChunk.store(true, std::memory_order_release);
+        stateStoreRef.set_lastEegChunk(chunk);
         
         // blocking push function... will always (eventually) run and return true, 
         // unless queue is closed, in which case we want out
@@ -183,6 +183,9 @@ try{
         }
     };
 
+    // HW QUALITY CHECKING
+    SignalQualityAnalyzer_C qualityAnalyzer;
+
 	// build first window
 	while(window.sliding_window.get_count()<window.winLen){
 		// sc
@@ -191,6 +194,11 @@ try{
 		} 
 		else { 
             log_chunk_if_calib(temp);
+
+            qualityAnalyzer.update(temp.data.data(), NUM_SAMPLES_CHUNK/NUM_CH_CHUNK);
+            auto q = qualityAnalyzer.getQuality();
+            for (int i=0; i<8; i++) temp.quality[i] = q[i];
+
 			// this will fit fine because winLen is a multiple of number of scans per channel = 32
 			// pop sucessful -> push into sliding window
 			for(int i = 0; i<NUM_SAMPLES_CHUNK;i++){
@@ -291,6 +299,13 @@ try{
             window.testFreq = currTestFreq;
             window.has_label = (currTestFreq != TestFreq_None);
         }
+
+        // new state
+        else if(currState == UIState_Hardware_Checks){
+            qualityAnalyzer.update(temp.data.data(), NUM_SAMPLES_CHUNK / NUM_CH_CHUNK);
+                auto q = qualityAnalyzer.getQuality();
+                for (int i=0; i<8; i++) temp.quality[i] = q[i];
+        }
         
         else if(currState == UIState_Active_Run){
             // run ftr extraction + classifier pipeline to get decision
@@ -369,11 +384,7 @@ int main() {
 
     // START THREADS. We pass the ring buffer by reference (std::ref) becauase each thread needs the actual shared 'ringBuf' instance, not just a copy...
     // This builds a new thread that starts executing immediately, running producer_thread_rn in parallel with the main thread (same for cons)
-#ifdef ACQ_BACKEND_FAKE
     std::thread prod(producer_thread_fn,std::ref(ringBuf), std::ref(stateStore));
-#else
-    std::thread prod(producer_thread_fn,std::ref(ringBuf));
-#endif
     std::thread cons(consumer_thread_fn,std::ref(ringBuf), std::ref(stateStore));
     std::thread http(http_thread_fn, std::ref(server));
     std::thread stim(stimulus_thread_fn, std::ref(stateStore));

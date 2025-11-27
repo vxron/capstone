@@ -1,6 +1,8 @@
 #pragma once
 #include "../utils/Types.h"
 #include <atomic>
+#include <mutex>
+#include <string>
 /* STATESTORE
 --> A single source of truth for all main c++ threads + client (js) to read things like:
     1) current UI state
@@ -31,12 +33,48 @@ struct StateStore_s{
     std::atomic<int> g_freq_right_hz{0};
     std::atomic<int> g_freq_left_hz{0};
 
+    // for UI vis of raw signals & signal integrity
+    std::atomic<bool> g_hasEegChunk;
+    // custom type req mutex protection
+    mutable std::mutex last_chunk_mutex;
+    bufferChunk_S g_lastEegChunk;
+    bufferChunk_S get_lastEegChunk() const {
+        std::lock_guard<std::mutex> lock(last_chunk_mutex);
+        return g_lastEegChunk;
+    }
+    void set_lastEegChunk(const bufferChunk_S& v) {
+        std::lock_guard<std::mutex> lock(last_chunk_mutex);
+        g_lastEegChunk = v;
+    }
+
     // Training status (Python) + subject / session ID
     struct sessionInfo_s {
         std::atomic<bool> g_isModelReady{0};
-        std::atomic<std::string> g_active_model_path{""}; // where we pull current classifier from
-        std::atomic<std::string> g_active_subject_id{""};
-        std::atomic<std::string> g_active_session_id{""};
+
+        // strings must be mutex-protected (proceed 1 at a time)
+        mutable std::mutex mtx_;
+        std::string g_active_model_path;
+        std::string g_active_subject_id;
+        std::string g_active_session_id;
+        
+        void set_active_model_path(const std::string& v) {
+            std::lock_guard<std::mutex> lock(mtx_);
+            g_active_model_path = v; // automatically unlocks mtx_
+        }
+        std::string get_active_model_path() const {
+            std::lock_guard<std::mutex> lock(mtx_);
+            return g_active_model_path; // automatically unlocks mtx_
+        }
+
+        void set_active_subject_id(const std::string& v) {
+            std::lock_guard<std::mutex> lock(mtx_);
+            g_active_subject_id = v;
+        }
+        std::string get_active_subject_id() const {
+            std::lock_guard<std::mutex> lock(mtx_);
+            return g_active_subject_id;
+        }
+
     };
     sessionInfo_s sessionInfo{};
 
