@@ -18,6 +18,7 @@
 #include <cstring>
 #include "stimulus/StimulusController.hpp"
 #include "acq/UnicornDriver.h"
+#include "SignalQualityAnalyzer.h"
 #include <fstream>
 
 #ifdef USE_EEG_FILTERS
@@ -27,6 +28,10 @@
 #ifdef ACQ_BACKEND_FAKE
 #include "acq/FakeAcquisition.h"
 #endif
+
+// Consumer stores last chunk globally (for now)
+bufferChunk_S g_lastEegChunk{};
+std::atomic<bool> g_hasEegChunk{false};
 
 // Global "please stop" flag set by Ctrl+C (SIGINT) to shut down cleanly
 static std::atomic<bool> g_stop{false};
@@ -90,8 +95,14 @@ try {
 #endif
         
         acqDriver.getData(NUM_SCANS_CHUNK, chunk.data.data()); // chunk.data.data() gives type float* (addr of first float in std::array obj)
+        for (size_t i=0; i<NUM_SAMPLES_CHUNK; i++){
+            chunk.data[i] = chunk.data[i]*0.00048828125f; // TEMPORARY: this is just a scaling i tried its prob wrong
+        }
+        LOG_ALWAYS(chunk.data[0]); // TEMPORARY: just to see the types of numbers it outputs
         tick_count++;
         chunk.tick = tick_count;
+        g_lastEegChunk = chunk;
+        g_hasEegChunk.store(true, std::memory_order_release);
 
 #ifdef USE_EEG_FILTERS
         // before we create window: PREPROCESS CHUNK
@@ -131,7 +142,7 @@ void consumer_thread_fn(RingBuffer_C<bufferChunk_S>& rb, StateStore_s& stateStor
 try{
     sliding_window_t window; // should acquire the data for 1 window with that many pops n then increment by hop... 
     bufferChunk_S temp; // placeholder
-
+    static bufferChunk_S lastChunk;
     // init csv: only need to produce csv in calibration mode for model training (training dataset)
     std::ofstream csv;
     bool csv_opened = false;
@@ -182,7 +193,7 @@ try{
             ++rows_written;
         }
     };
-
+    SignalQualityAnalyzer_C qualityAnalyzer;
 	// build first window
 	while(window.sliding_window.get_count()<window.winLen){
 		// sc
@@ -191,6 +202,11 @@ try{
 		} 
 		else { 
             log_chunk_if_calib(temp);
+
+            qualityAnalyzer.update(temp.data.data(), NUM_SAMPLES_CHUNK/NUM_CH_CHUNK);
+            auto q = qualityAnalyzer.getQuality();
+            for (int i=0; i<8; i++) temp.quality[i] = q[i];
+
 			// this will fit fine because winLen is a multiple of number of scans per channel = 32
 			// pop sucessful -> push into sliding window
 			for(int i = 0; i<NUM_SAMPLES_CHUNK;i++){
@@ -206,6 +222,15 @@ try{
         // 1) ========= before we slide/build new window: read snapshot of ui_state and freq ============
         currState = stateStoreRef.g_ui_state.load(std::memory_order_acquire);
         if((currState == UIState_Instructions || currState == UIState_Home || currState == UIState_None)){
+                // Still pop from ring buffer to prevent producer from blocking
+            if (rb.pop(&temp)) {
+                log_chunk_if_calib(temp);
+
+                qualityAnalyzer.update(temp.data.data(), NUM_SAMPLES_CHUNK / NUM_CH_CHUNK);
+                auto q = qualityAnalyzer.getQuality();
+                for (int i=0; i<8; i++) temp.quality[i] = q[i];
+            }
+
             // don't build window (this is an acceptable latency)
             continue; //back to top while loop
         }
@@ -250,6 +275,11 @@ try{
 				break;
 			} else {
                 log_chunk_if_calib(temp);
+
+                qualityAnalyzer.update(temp.data.data(), NUM_SAMPLES_CHUNK/NUM_CH_CHUNK);
+                auto q = qualityAnalyzer.getQuality();
+                for (int i=0; i<8; i++) temp.quality[i] = q[i];
+
 				// pop successful -> push into sliding window
 				if(amnt_left_to_add >= NUM_SAMPLES_CHUNK){
                     for(std::size_t j=0;j<NUM_SAMPLES_CHUNK;j++){

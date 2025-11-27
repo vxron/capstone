@@ -4,7 +4,7 @@
         {
             "name": "x64-debug-vcpkg-vs",
             "displayName": "x64 Debug (vcpkg, VS2019)",
-            "generator": "Visual Studio 16 2019",
+            "generator": "Visual Studio 18 2022",
             "architecture": { "value": "x64" },
             "binaryDir": "out/build/x64-debug-vcpkg-vs",
             "cacheVariables": {
@@ -16,7 +16,7 @@
         {
             "name": "x64-release-vcpkg-vs",
             "displayName": "x64 Release (vcpkg, VS2019)",
-            "generator": "Visual Studio 16 2019",
+            "generator": "Visual Studio 18 2022",
             "architecture": { "value": "x64" },
             "binaryDir": "out/build/x64-release-vcpkg-vs",
             "cacheVariables": {
