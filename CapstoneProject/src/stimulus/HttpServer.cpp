@@ -57,14 +57,19 @@ void HttpServer_C::handle_get_state(const httplib::Request& req, httplib::Respon
     int block_id = stateStoreRef_.g_block_id.load(std::memory_order_acquire);
     int freq_hz_e = static_cast<int>(stateStoreRef_.g_freq_hz_e.load(std::memory_order_acquire));
     int freq_hz = stateStoreRef_.g_freq_hz.load(std::memory_order_acquire);
-    // Run-mode pair 
-    int freq_left_hz   = stateStoreRef_.g_freq_left_hz.load(std::memory_order_acquire);
-    int freq_right_hz  = stateStoreRef_.g_freq_right_hz.load(std::memory_order_acquire);
-    int freq_left_hz_e = static_cast<int>(stateStoreRef_.g_freq_left_hz_e.load(std::memory_order_acquire));
-    int freq_right_hz_e= static_cast<int>(stateStoreRef_.g_freq_right_hz_e.load(std::memory_order_acquire));
+    
+    // Run-mode pair
+    // mtx protect
+    std::lock_guard<std::mutex> lock(stateStoreRef_.saved_sessions_mutex);
+    int currIdx = stateStoreRef_.currentSessionIdx; 
+    int freq_left_hz   = stateStoreRef_.saved_sessions[currIdx].freq_left_hz;
+    int freq_right_hz  = stateStoreRef_.saved_sessions[currIdx].freq_right_hz;
+    int freq_left_hz_e = static_cast<int>(stateStoreRef_.saved_sessions[currIdx].freq_left_hz_e);
+    int freq_right_hz_e = static_cast<int>(stateStoreRef_.saved_sessions[currIdx].freq_left_hz_e);
+
     // Active session info
-    bool is_model_ready = stateStoreRef_.sessionInfo.g_isModelReady.load(std::memory_order_acquire); // for training job monitoring
-    std::string active_subject_id = stateStoreRef_.sessionInfo.get_active_subject_id();
+    bool is_model_ready = stateStoreRef_.currentSessionInfo.g_isModelReady.load(std::memory_order_acquire); // for training job monitoring
+    std::string active_subject_id = stateStoreRef_.currentSessionInfo.get_active_subject_id();
     int popup = stateStoreRef_.g_ui_popup.load(std::memory_order_acquire); // any popup event
 
     // 2) build json string manually
