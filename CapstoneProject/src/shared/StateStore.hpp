@@ -2,6 +2,7 @@
 #include "../utils/Types.h"
 #include <atomic>
 #include <mutex>
+#include <condition_variable>
 /* STATESTORE
 --> A single source of truth for all main c++ threads + client (js) to read things like:
     1) current UI state
@@ -35,12 +36,6 @@ struct StateStore_s{
     std::atomic<UIStateEvent_E> g_ui_event{UIStateEvent_None};
 
     std::atomic<UIPopup_E> g_ui_popup{UIPopup_None};
-
-    // run mode frequency pair to be sent to ui
-    std::atomic<TestFreq_E> g_freq_left_hz_e{TestFreq_None};
-    std::atomic<TestFreq_E> g_freq_right_hz_e{TestFreq_None};
-    std::atomic<int> g_freq_right_hz{0};
-    std::atomic<int> g_freq_left_hz{0};
 
     // For displaying signal in real-time on UI
     std::atomic<bool> g_hasEegChunk{false};
@@ -77,9 +72,10 @@ struct StateStore_s{
         std::atomic<bool> g_isModelReady{0};
         // strings must be mutex-protected (proceed 1 at a time)
         mutable std::mutex mtx_;
-        std::string g_active_model_path;
-        std::string g_active_subject_id;
-        std::string g_active_session_id;
+        std::string g_active_model_path = "";
+        std::string g_active_subject_id = "";
+        std::string g_active_session_id = "";
+        std::string g_active_data_path = "";
 
         void set_active_model_path(const std::string& v) {
             std::lock_guard<std::mutex> lock(mtx_);
@@ -98,8 +94,26 @@ struct StateStore_s{
             std::lock_guard<std::mutex> lock(mtx_);
             return g_active_subject_id;
         }
+
+        void set_active_session_id(const std::string& v) {
+            std::lock_guard<std::mutex> lock(mtx_);
+            g_active_session_id = v;
+        }
+        std::string get_active_session_id() const {
+            std::lock_guard<std::mutex> lock(mtx_);
+            return g_active_session_id;
+        }
+
+        void set_active_data_path(const std::string& v) {
+            std::lock_guard<std::mutex> lock(mtx_);
+            g_active_data_path = v;
+        }
+        std::string get_active_data_path() const {
+            std::lock_guard<std::mutex> lock(mtx_);
+            return g_active_data_path;
+        }
     };
-    sessionInfo_s sessionInfo{};
+    sessionInfo_s currentSessionInfo{};
 
     // LIST OF SAVED SESSIONS
     struct SavedSession_s {
@@ -109,18 +123,31 @@ struct StateStore_s{
         std::string session;     // session_id
         std::string created_at;  // ISO time string
         std::string model_dir;   // model dir/path to load from
+        
+        // run mode frequency pair to be sent to ui
+        TestFreq_E freq_left_hz_e{TestFreq_None};
+        TestFreq_E freq_right_hz_e{TestFreq_None};
+        int freq_right_hz{0};
+        int freq_left_hz{0};
     };
-
+    // Build the default session entry
+    SavedSession_s defaultStart{
+        .id = "default",
+        .label = "Default",
+        .subject = "",
+        .session = "",
+        .created_at = "",
+        .model_dir = "",
+        .freq_left_hz_e = TestFreq_None,
+        .freq_right_hz_e = TestFreq_None,
+        .freq_right_hz = 0,
+        .freq_left_hz = 0
+    };
+    
     // vector of all saved sessions for storage, guarded with blocking mutex (fine since infrequent updates)
     mutable std::mutex saved_sessions_mutex;
-    std::vector<SavedSession_s> saved_sessions;
-
-    // Helper: add a new saved session (called from StimulusController / training success)
-    void add_saved_session(const SavedSession_s& s) {
-        // blocks until mutex is available for acquiring
-        std::lock_guard<std::mutex> lock(saved_sessions_mutex);
-        saved_sessions.push_back(s);
-    } // <-- lock goes out of scope here, mutex is automatically released
+    std::vector<SavedSession_s> saved_sessions { defaultStart };
+    std::atomic<int> currentSessionIdx{0}; // iterates through vector
 
     // Helper: snapshot the list for HTTP /state (for display on sessions page)
     std::vector<SavedSession_s> snapshot_saved_sessions() const {
@@ -128,6 +155,17 @@ struct StateStore_s{
         std::lock_guard<std::mutex> lock(saved_sessions_mutex);
         return saved_sessions;
     }
+
+    // (1) finalize request slot from stim controller -> consumer after calibration success
+    // conditional variable! 
+    std::mutex mtx_finalize_request;
+    std::condition_variable cv_finalize_request;
+    bool finalize_requested = false;
+
+    // (2) train job request from consumer -> training manager after finalize success
+    std::mutex mtx_train_job_request;
+    std::condition_variable cv_train_job_request;
+    bool train_job_requested = false;
 
 };
 
