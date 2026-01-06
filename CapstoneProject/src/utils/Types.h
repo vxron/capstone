@@ -135,13 +135,6 @@ enum UIPopup_E {
 	UIPopup_TrainJobFailed, // 7
 };
 
-enum BitOperation_E {
-	BitOp_Toggle,
-	BitOp_Set,
-	BitOp_Clear,
-	BitOp_Read
-}; // BitOperation_E
-
 /* END ENUMS */
 
 
